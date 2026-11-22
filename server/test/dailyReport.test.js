@@ -21,6 +21,7 @@ const { resolveEntryDate, addDays, todayKey } = require("../src/lib/dates");
 const { createToken } = require("../src/middleware/auth");
 const { mockSessionUser } = require("./sessionMock");
 const reportRoutes = require("../src/routes/reports");
+const { parseWorkbookRows } = require("../src/lib/excel");
 
 const COMPANY_ID = "64b000000000000000000001";
 const WH_A = "64b0000000000000000000a1";
@@ -77,6 +78,18 @@ function fakeAggregate(logs) {
 function chain(result) {
   const c = { sort: () => c, limit: () => c, populate: () => c, then: (resolve, reject) => Promise.resolve(result).then(resolve, reject) };
   return c;
+}
+
+function getBuffer(server, path, cookie) {
+  return new Promise((resolve, reject) => {
+    http
+      .get({ port: server.address().port, path, headers: { Cookie: cookie } }, (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
+      })
+      .on("error", reject);
+  });
 }
 
 function get(server, path, cookie) {
@@ -247,6 +260,24 @@ test("daily report reconstructs opening/closing per day, including backdated and
 
     const bad = await get(server, `/api/reports/day?date=2024-13-01`, cookie);
     assert.equal(bad.status, 400);
+
+    const xlsx = await getBuffer(server, `/api/reports/day/export?date=${D3}`, cookie);
+    assert.equal(xlsx.status, 200);
+    assert.match(xlsx.headers["content-disposition"], /daily-stock-2024-03-03\.xlsx/);
+    const sheet = await parseWorkbookRows(xlsx.body);
+    assert.deepEqual(Object.keys(sheet[0]), [
+      "Date", "Item", "Warehouse", "Category", "Opening", "Added", "Sold",
+      "Moved In", "Moved Out", "Adjusted", "Removed", "Closing", "Status",
+    ]);
+    const main = sheet.find((r) => r.Warehouse === "Main");
+    assert.deepEqual(
+      { Opening: main.Opening, Sold: main.Sold, "Moved Out": main["Moved Out"], Closing: main.Closing },
+      { Opening: "110", Sold: "20", "Moved Out": "20", Closing: "70" }
+    );
+    assert.equal(sheet.find((r) => r.Warehouse === "North").Status, "Deleted");
+    const total = sheet[sheet.length - 1];
+    assert.equal(total.Item, "Total");
+    assert.equal(total.Closing, String(d3.body.totals.closing));
   } finally {
     server.close();
   }

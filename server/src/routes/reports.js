@@ -6,6 +6,7 @@ const { requireAuth } = require("../middleware/auth");
 const { asyncHandler } = require("../lib/asyncHandler");
 const { STOCK_ACTIONS, toObjectId } = require("../lib/stockOps");
 const { parseDateKeyParam, todayKey, addDays, toDateKey } = require("../lib/dates");
+const { buildWorkbookBuffer } = require("../lib/excel");
 
 const router = express.Router();
 
@@ -36,19 +37,13 @@ function emptyRow() {
 //   opening(D) = closing(D) − Σ changes dated D
 // This stays correct with backdated entries, since every stock change is
 // filed under the date the user picked (entryDate), not when it was typed.
-router.get(
-  "/day",
-  requireAuth(["admin"]),
-  asyncHandler(async (req, res) => {
-    const companyId = req.session.companyId;
-    const date = req.query.date ? parseDateKeyParam(req.query.date) : todayKey();
-    const { warehouseId } = req.query;
-
+// Builds the day report shared by the JSON view and the Excel export.
+// Returns null when warehouseId doesn't belong to the company.
+async function buildDayReport(companyId, date, warehouseId) {
     const warehouses = await Warehouse.find({ companyId }).sort({ name: 1 });
     const warehouseNames = new Map(warehouses.map((w) => [String(w._id), w.name]));
-    if (warehouseId && !warehouseNames.has(String(warehouseId))) {
-      return res.status(404).json({ error: "Warehouse not found" });
-    }
+    if (warehouseId && !warehouseNames.has(String(warehouseId))) return null;
+    const warehouseName = warehouseId ? warehouseNames.get(String(warehouseId)) : null;
 
     const itemFilter = { companyId };
     if (warehouseId) itemFilter.warehouseId = warehouseId;
@@ -172,11 +167,8 @@ router.get(
       for (const k of Object.keys(totals)) totals[k] += row[k];
     }
 
-    return res.json({
-      date,
-      today: todayKey(),
-      prevDate: addDays(date, -1),
-      nextDate: addDays(date, 1),
+    return {
+      warehouseName,
       items: list,
       totals,
       logs: dayLogs.map((l) => ({
@@ -194,7 +186,93 @@ router.get(
         username: l.userId?.username || "Deleted user",
         warehouse_name: l.warehouseId?.name || null,
       })),
+    };
+}
+
+router.get(
+  "/day",
+  requireAuth(["admin"]),
+  asyncHandler(async (req, res) => {
+    const date = req.query.date ? parseDateKeyParam(req.query.date) : todayKey();
+    const report = await buildDayReport(req.session.companyId, date, req.query.warehouseId);
+    if (!report) return res.status(404).json({ error: "Warehouse not found" });
+
+    const { items, totals, logs } = report;
+    return res.json({
+      date,
+      today: todayKey(),
+      prevDate: addDays(date, -1),
+      nextDate: addDays(date, 1),
+      items,
+      totals,
+      logs,
     });
+  })
+);
+
+// GET /api/reports/day/export?date=YYYY-MM-DD&warehouseId=...&activeOnly=1
+//
+// The day's opening/closing table as an .xlsx workbook: one row per item
+// with every movement bucket as its own numeric column (outflows positive,
+// Adjusted signed — same as the on-screen table), plus a Total row.
+router.get(
+  "/day/export",
+  requireAuth(["admin"]),
+  asyncHandler(async (req, res) => {
+    const date = req.query.date ? parseDateKeyParam(req.query.date) : todayKey();
+    const report = await buildDayReport(req.session.companyId, date, req.query.warehouseId);
+    if (!report) return res.status(404).json({ error: "Warehouse not found" });
+
+    const activeOnly = req.query.activeOnly === "1" || req.query.activeOnly === "true";
+    const items = activeOnly ? report.items.filter((i) => i.has_activity) : report.items;
+
+    const header = [
+      "Date",
+      "Item",
+      "Warehouse",
+      "Category",
+      "Opening",
+      "Added",
+      "Sold",
+      "Moved In",
+      "Moved Out",
+      "Adjusted",
+      "Removed",
+      "Closing",
+      "Status",
+    ];
+    const toRow = (r) => [
+      date,
+      r.name,
+      r.warehouse_name,
+      r.category || "",
+      r.opening,
+      r.added,
+      r.sold,
+      r.movedIn,
+      r.movedOut,
+      r.adjusted,
+      r.removed,
+      r.closing,
+      r.deleted ? "Deleted" : "",
+    ];
+
+    const totals = emptyRow();
+    for (const row of items) {
+      for (const k of Object.keys(totals)) totals[k] += row[k];
+    }
+    const rows = items.map(toRow);
+    rows.push(toRow({ ...totals, name: "Total", warehouse_name: report.warehouseName || "All warehouses" }));
+
+    const buffer = await buildWorkbookBuffer("Daily Stock", header, rows);
+    const scope = report.warehouseName
+      ? `-${report.warehouseName.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}`
+      : "";
+    const filename = `daily-stock-${date}${scope}.xlsx`;
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   })
 );
 

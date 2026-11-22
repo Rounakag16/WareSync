@@ -122,6 +122,14 @@ export default function AdminDailyPage() {
     download(`/logs/export?${params}`, `activity-logs-${date}.xlsx`).then((r) => !r.ok && setError(r.error));
   }
 
+  // Opening/closing for only the items that changed on this day.
+  function exportDayStock() {
+    const params = new URLSearchParams({ date });
+    if (warehouseId) params.set("warehouseId", warehouseId);
+    params.set("activeOnly", "1");
+    download(`/reports/day/export?${params}`, `daily-stock-${date}.xlsx`).then((r) => !r.ok && setError(r.error));
+  }
+
   return (
     <div className="page-container">
       <div className="admin-page-header flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
@@ -164,6 +172,17 @@ export default function AdminDailyPage() {
               <option key={wh.id} value={wh.id}>{wh.name}</option>
             ))}
           </select>
+          <button
+            onClick={exportDayStock}
+            className="btn-primary text-sm w-full sm:w-auto"
+            disabled={!report || !report.items.some((i) => i.has_activity)}
+            title="Opening and closing stock for items that changed on this day"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            Export changed items
+          </button>
         </div>
       </div>
 
