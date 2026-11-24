@@ -5,13 +5,13 @@
 //   VITE_SUPPORT_EMAIL   address for support, privacy and grievance requests
 //   VITE_LEGAL_NAME      the person (or company) that operates WareSync
 //   VITE_LEGAL_CITY      city whose courts have jurisdiction, e.g. "Kolkata"
-//   VITE_SITE_URL        public URL, e.g. https://waresyncc.onrender.com
+//   VITE_SITE_URL        public URL, e.g. https://waresync.rounak.tech
 
 const env = import.meta.env;
 
 export const SITE = {
   name: "WareSync",
-  url: (env.VITE_SITE_URL || "https://waresyncc.onrender.com").replace(/\/+$/, ""),
+  url: (env.VITE_SITE_URL || "https://waresync.rounak.tech").replace(/\/+$/, ""),
   supportEmail: env.VITE_SUPPORT_EMAIL || "support@waresync.example",
   legalName: env.VITE_LEGAL_NAME || "the operator of WareSync",
   legalCity: env.VITE_LEGAL_CITY || "India",

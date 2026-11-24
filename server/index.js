@@ -34,6 +34,19 @@ const PORT = process.env.PORT || 4000;
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 
+// One public address: with CANONICAL_HOST set, page visits on any other
+// host (e.g. the *.onrender.com one) are sent to it. Sessions are per-host
+// cookies, so this keeps people from being signed in on one and not the
+// other. The health check is left alone for the host's own probes.
+const canonicalHost = (process.env.CANONICAL_HOST || "").trim().toLowerCase();
+if (canonicalHost) {
+  app.use((req, res, next) => {
+    if (req.hostname === canonicalHost || req.path === "/api/health") return next();
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    return res.redirect(301, `https://${canonicalHost}${req.originalUrl}`);
+  });
+}
+
 // Security headers. The Content Security Policy only allows scripts, styles
 // and frames from this site plus the two outside services the app really
 // uses: Google Fonts and Google Sign-In.

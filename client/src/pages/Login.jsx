@@ -214,15 +214,6 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {mode === "email" && (
-          <p className="text-xs text-slate-500 text-center">
-            Created your workspace before email sign-in?{" "}
-            <button type="button" onClick={() => switchMode("code")} className="font-semibold text-brand-700 hover:underline">
-              Use your company code
-            </button>
-            , then add an email in Settings.
-          </p>
-        )}
       </div>
     </AuthLayout>
   );

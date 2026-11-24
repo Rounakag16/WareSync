@@ -87,7 +87,8 @@ Then visit whatever port your server is listening on (default `4000`, or whateve
 | `PORT`          | No               | Defaults to `4000`                                                                                                                                              |
 | `CLIENT_ORIGIN` | No               | Only used in development, for CORS                                                                                                                              |
 | `APP_TIMEZONE`  | No               | IANA timezone that decides which calendar day "today" is for stock entries (default `Asia/Kolkata`).                                                             |
-| `APP_URL`       | Yes (for email)  | Public URL used in email links, e.g. `https://waresyncc.onrender.com`. Never taken from the request, so links can't be spoofed.                                  |
+| `APP_URL`       | Yes (for email)  | Public URL used in email links, e.g. `https://waresync.rounak.tech`. Never taken from the request, so links can't be spoofed.                                  |
+| `CANONICAL_HOST`| No              | e.g. `waresync.rounak.tech`. Page visits on any other host (like `*.onrender.com`) are redirected there with a 301.                                         |
 | `EMAIL_PROVIDER`| No               | `brevo` or `resend`. Empty = no password-reset / confirmation emails (dev prints them to the console).                                                         |
 | `EMAIL_API_KEY` | With provider    | The provider's API key.                                                                                                                                         |
 | `EMAIL_FROM`    | With provider    | Sender address verified with the provider.                                                                                                                      |
@@ -99,7 +100,6 @@ Client-side (build-time) variables — set them on the host too; see `client/.en
 
 - **Admins** sign up with their email and a password, or with Google. They sign in with email (or Google), can reset a forgotten password by email, and confirm their email address with a link.
 - **Employees** don't need an email. The admin creates them on the Team page with a temporary password; they sign in with the company code + username, and must choose their own password (and accept the Terms) on first sign-in. If they forget it, the admin resets it.
-- Admins created before email sign-in still sign in with the company code, and are prompted to add an email in Settings.
 - Passwords: at least 8 characters, checked against common and breached passwords (Have I Been Pwned, k-anonymity — only a 5-character hash prefix is sent). Changing or resetting a password signs out every other device; Settings also has "Sign out everywhere".
 
 ## Deploying

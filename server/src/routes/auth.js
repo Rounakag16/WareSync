@@ -164,7 +164,7 @@ router.post(
 
 // POST /api/auth/login — two ways in:
 //   { email, password }                      — admins
-//   { companySlug, username, password }      — employees (and older admins)
+//   { companySlug, username, password }      — employees
 router.post(
   "/login",
   loginLimiter,
@@ -193,6 +193,11 @@ router.post(
       if (company) user = await User.findOne({ companyId: company._id, username });
       if (!user || !(await verifyPassword(password, user.passwordHash))) {
         return res.status(401).json({ error: "Incorrect company code, username or password" });
+      }
+      // Admins sign in with their email or Google. An admin who somehow still
+      // has no email is let through so they can't be locked out.
+      if (user.role === "admin" && user.email) {
+        return res.status(400).json({ error: "Admins sign in with email or Google. Use the “Owner / admin” tab." });
       }
     }
 
