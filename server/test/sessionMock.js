@@ -18,7 +18,9 @@ function mockSessionUser({ userId, companyId, role = "admin", username = "admin"
     mustChangePassword: false,
     termsVersion: require("../src/middleware/auth").TERMS_VERSION,
   };
-  return mock.method(User, "findById", () => ({ select: async () => user }));
+  require("../src/lib/sessionCache").clear();
+  const query = { select: () => query, lean: async () => user, then: (ok, fail) => Promise.resolve(user).then(ok, fail) };
+  return mock.method(User, "findById", () => query);
 }
 
 module.exports = { mockSessionUser };

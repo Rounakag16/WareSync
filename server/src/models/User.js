@@ -48,4 +48,29 @@ userSchema.index({ googleId: 1 }, { unique: true, partialFilterExpression: { goo
 userSchema.index({ resetTokenHash: 1 }, { sparse: true });
 userSchema.index({ verifyTokenHash: 1 }, { sparse: true });
 
+// requireAuth caches user rows briefly (see lib/sessionCache.js). Any write
+// to this collection drops that cache so sign-outs, password changes and
+// deletions still apply on the very next request. Cleared both before the
+// write and after it, so no request can re-cache the old row in between.
+const sessionCache = require("../lib/sessionCache");
+const WRITE_OPS = [
+  "save",
+  "updateOne",
+  "updateMany",
+  "replaceOne",
+  "deleteOne",
+  "deleteMany",
+  "findOneAndUpdate",
+  "findOneAndReplace",
+  "findOneAndDelete",
+];
+const clearCache = () => sessionCache.clear();
+for (const op of WRITE_OPS) {
+  userSchema.pre(op, { document: true, query: true }, function (next) {
+    clearCache();
+    next();
+  });
+  userSchema.post(op, { document: true, query: true }, clearCache);
+}
+
 module.exports = mongoose.model("User", userSchema);

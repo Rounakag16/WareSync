@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Company = require("../models/Company");
+const sessionCache = require("../lib/sessionCache");
 
 // In production, a missing JWT_SECRET must not silently fall back to a
 // hardcoded value — anyone who reads this source could forge sessions for
@@ -98,9 +99,16 @@ async function loadSession(req) {
   }
   if (!payload.userId || payload.purpose) return null;
 
-  const user = await User.findById(payload.userId).select(
-    "companyId username role email emailVerified googleId passwordHash sessionVersion mustChangePassword termsVersion"
-  );
+  let user = sessionCache.get(payload.userId);
+  if (user === undefined) {
+    const startedAt = sessionCache.currentGeneration();
+    user = await User.findById(payload.userId)
+      .select(
+        "companyId username role email emailVerified googleId passwordHash sessionVersion mustChangePassword termsVersion"
+      )
+      .lean();
+    sessionCache.set(payload.userId, user || null, startedAt);
+  }
   if (!user || String(user.companyId) !== String(payload.companyId)) return null;
   if ((payload.sv || 0) !== (user.sessionVersion || 0)) return null;
 

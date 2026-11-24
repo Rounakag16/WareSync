@@ -387,7 +387,7 @@ router.post(
     }
 
     if (beforeQty !== null) {
-      await alertIfLowStock({ companyId: req.session.companyId, itemId: reqDoc.itemId, before: beforeQty });
+      alertIfLowStock({ companyId: req.session.companyId, itemId: reqDoc.itemId, before: beforeQty }); // background; never throws
     }
 
     await logActivity({

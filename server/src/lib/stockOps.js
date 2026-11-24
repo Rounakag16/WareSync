@@ -110,13 +110,14 @@ async function applyStockAdjust({ companyId, itemId, type, qty, userId, partyNam
   const item = await StockItem.findOne({ _id: itemId, companyId });
   if (!item) throw new Error("Item not found");
 
-  const warehouse = await Warehouse.findOne({ _id: item.warehouseId, companyId });
+  // Independent lookups: run them together instead of one after another.
+  const [warehouse, history] = await Promise.all([
+    Warehouse.findOne({ _id: item.warehouseId, companyId }),
+    isToday
+      ? null
+      : historicalBalances({ companyId, itemId: item._id, currentQty: item.quantity, entryDate: date }),
+  ]);
   const warehouseName = warehouse ? warehouse.name : "warehouse";
-
-  let history = null;
-  if (!isToday) {
-    history = await historicalBalances({ companyId, itemId: item._id, currentQty: item.quantity, entryDate: date });
-  }
 
   let change;
   if (type === "add") change = qty;
@@ -204,17 +205,14 @@ async function applyStockMove({
   const date = entryDate || todayKey();
   const isToday = date >= todayKey();
 
-  const sourceItem = await StockItem.findOne({
-    _id: itemId,
-    warehouseId: fromWarehouseId,
-    companyId,
-  });
+  const [sourceItem, destWarehouse, sourceWarehouse] = await Promise.all([
+    StockItem.findOne({ _id: itemId, warehouseId: fromWarehouseId, companyId }),
+    Warehouse.findOne({ _id: toWarehouseId, companyId }),
+    Warehouse.findOne({ _id: fromWarehouseId, companyId }),
+  ]);
   if (!sourceItem) throw new Error("Source item not found");
-
-  const destWarehouse = await Warehouse.findOne({ _id: toWarehouseId, companyId });
   if (!destWarehouse) throw new Error("Destination warehouse not found");
 
-  const sourceWarehouse = await Warehouse.findOne({ _id: fromWarehouseId, companyId });
   const sourceWarehouseName = sourceWarehouse ? sourceWarehouse.name : "warehouse";
 
   let sourceHistory = null;
@@ -278,35 +276,36 @@ async function applyStockMove({
   const partyNote = partyName ? ` (Party: ${partyName})` : "";
   const sourceBefore = sourceHistory ? sourceHistory.endOfDay : updatedSource.quantity + qty;
 
-  await logActivity({
-    companyId,
-    userId,
-    warehouseId: fromWarehouseId,
-    itemId: sourceItem._id,
-    itemName: sourceItem.name,
-    action: "transfer_out",
-    quantityBefore: sourceBefore,
-    quantityAfter: sourceBefore - qty,
-    quantityChange: -qty,
-    details: `Moved ${qty} of "${sourceItem.name}" to ${destWarehouse.name}${partyNote}`,
-    partyName,
-    entryDate: date,
-  });
-
-  await logActivity({
-    companyId,
-    userId,
-    warehouseId: toWarehouseId,
-    itemId: destItem._id,
-    itemName: sourceItem.name,
-    action: "transfer_in",
-    quantityBefore: destBefore,
-    quantityAfter: destAfter,
-    quantityChange: qty,
-    details: `Received ${qty} of "${sourceItem.name}" from ${sourceWarehouseName}${partyNote}`,
-    partyName,
-    entryDate: date,
-  });
+  await Promise.all([
+    logActivity({
+      companyId,
+      userId,
+      warehouseId: fromWarehouseId,
+      itemId: sourceItem._id,
+      itemName: sourceItem.name,
+      action: "transfer_out",
+      quantityBefore: sourceBefore,
+      quantityAfter: sourceBefore - qty,
+      quantityChange: -qty,
+      details: `Moved ${qty} of "${sourceItem.name}" to ${destWarehouse.name}${partyNote}`,
+      partyName,
+      entryDate: date,
+    }),
+    logActivity({
+      companyId,
+      userId,
+      warehouseId: toWarehouseId,
+      itemId: destItem._id,
+      itemName: sourceItem.name,
+      action: "transfer_in",
+      quantityBefore: destBefore,
+      quantityAfter: destAfter,
+      quantityChange: qty,
+      details: `Received ${qty} of "${sourceItem.name}" from ${sourceWarehouseName}${partyNote}`,
+      partyName,
+      entryDate: date,
+    }),
+  ]);
 
   return { newSourceQty: updatedSource.quantity, destAfter };
 }

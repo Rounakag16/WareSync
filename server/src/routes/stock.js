@@ -38,10 +38,16 @@ router.get(
     const filter = { companyId: req.session.companyId };
     if (warehouseId) filter.warehouseId = warehouseId;
 
-    const items = await StockItem.find(filter).sort({ name: 1 }).populate("warehouseId", "name");
+    // Fetched side by side rather than with .populate(), which would wait
+    // for the items before asking for their warehouses.
+    const [items, warehouses] = await Promise.all([
+      StockItem.find(filter).sort({ name: 1 }).lean(),
+      Warehouse.find({ companyId: req.session.companyId }).select("name").lean(),
+    ]);
+    const warehouseNames = new Map(warehouses.map((w) => [String(w._id), w.name]));
 
     return res.json({
-      items: items.map((item) => serializeItem(item, item.warehouseId?.name)),
+      items: items.map((item) => serializeItem(item, warehouseNames.get(String(item.warehouseId)))),
     });
   })
 );
@@ -264,7 +270,8 @@ router.post(
         entryDate,
       });
 
-      await alertIfLowStock({
+      // Runs after the response is sent; it never throws.
+      alertIfLowStock({
         companyId: req.session.companyId,
         itemId: result.item._id,
         before: result.currentQuantity - (result.after - result.before),
@@ -309,7 +316,8 @@ router.post(
         entryDate,
       });
 
-      await alertIfLowStock({
+      // Runs after the response is sent; it never throws.
+      alertIfLowStock({
         companyId: req.session.companyId,
         itemId,
         before: result.newSourceQty + qty,
